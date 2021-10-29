@@ -5,11 +5,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.*
 import android.os.Process
+import android.widget.Toast
 import org.json.JSONArray
 import java.io.*
 import com.arthenica.ffmpegkit.FFmpegKit
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.lang.Exception
 
 class DownloadService : Service() {
     private lateinit var serviceLooper: Looper
@@ -22,15 +24,6 @@ class DownloadService : Service() {
     private lateinit var download: File
 
     private inner class ServiceHandler(looper: Looper) : Handler(looper) {
-        private fun getJsonUrl(msg: Message): String? {
-            val url = msg.data.getString("url") ?: return null
-            return Uri.parse(url)
-                .buildUpon()
-                .clearQuery()
-                .appendPath(".json")
-                .toString()
-        }
-
         private fun getVideoUrl(jsonUrl: String): String? {
             val res = client.newCall(Request.Builder().url(jsonUrl).build()).execute()
             return JSONArray(res.body!!.string())
@@ -51,8 +44,16 @@ class DownloadService : Service() {
         }
 
         override fun handleMessage(msg: Message) {
-            val url = getJsonUrl(msg) ?: return
-            val videoUrl = getVideoUrl(url) ?: return
+            val url = msg.data.getString("url") ?: return
+
+            val title: String?
+            val jsonUrl: String
+            Uri.parse(url).let { uri ->
+                title = uri.lastPathSegment
+                jsonUrl = uri.buildUpon().clearQuery().appendPath(".json").build().toString()
+            }
+
+            val videoUrl = getVideoUrl(jsonUrl) ?: return
             val audioUrl = getAudioUrl(videoUrl)
 
             Request.Builder().url(videoUrl).build().let { req ->
@@ -79,6 +80,7 @@ class DownloadService : Service() {
                 video.renameTo(download)
             }
 
+            Toast.makeText(applicationContext, "DOWNLOADED $title", Toast.LENGTH_SHORT).show()
             stopSelf(msg.arg1)
         }
     }
@@ -109,7 +111,7 @@ class DownloadService : Service() {
             }
         }
 
-        return START_STICKY
+        return START_REDELIVER_INTENT
     }
 
     override fun onBind(intent: Intent): IBinder? = null
