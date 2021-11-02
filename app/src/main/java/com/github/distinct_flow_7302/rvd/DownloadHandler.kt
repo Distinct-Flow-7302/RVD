@@ -153,7 +153,6 @@ class DownloadHandler(
             notificationHandler.showFinished(fileUri, MIME_TYPE)
         } catch (e: Throwable) {
             notificationHandler.showFailed()
-            throw e
         } finally {
             videoFile.delete()
             audioFile.delete()
@@ -186,32 +185,32 @@ class DownloadHandler(
         muxer.start()
 
         while (!sawEOS) {
-            bufInfo.offset = offset;
-            bufInfo.size = videoEx.readSampleData(buf, offset);
+            bufInfo.offset = offset
+            bufInfo.size = videoEx.readSampleData(buf, offset)
             if (bufInfo.size < 0) {
-                sawEOS = true;
-                bufInfo.size = 0;
+                sawEOS = true
+                bufInfo.size = 0
             } else {
-                bufInfo.presentationTimeUs = videoEx.sampleTime;
-                bufInfo.flags = MediaCodec.BUFFER_FLAG_KEY_FRAME;
-                muxer.writeSampleData(videoTrack, buf, bufInfo);
-                videoEx.advance();
+                bufInfo.presentationTimeUs = videoEx.sampleTime
+                bufInfo.flags = MediaCodec.BUFFER_FLAG_KEY_FRAME
+                muxer.writeSampleData(videoTrack, buf, bufInfo)
+                videoEx.advance()
             }
         }
 
         sawEOS = false
         while (!sawEOS) {
-            bufInfo.offset = offset;
-            bufInfo.size = audioEx.readSampleData(buf, offset);
+            bufInfo.offset = offset
+            bufInfo.size = audioEx.readSampleData(buf, offset)
 
             if (bufInfo.size < 0) {
-                sawEOS = true;
-                bufInfo.size = 0;
+                sawEOS = true
+                bufInfo.size = 0
             } else {
-                bufInfo.presentationTimeUs = audioEx.sampleTime;
-                bufInfo.flags = MediaCodec.BUFFER_FLAG_KEY_FRAME;
-                muxer.writeSampleData(audioTrack, buf, bufInfo);
-                audioEx.advance();
+                bufInfo.presentationTimeUs = audioEx.sampleTime
+                bufInfo.flags = MediaCodec.BUFFER_FLAG_KEY_FRAME
+                muxer.writeSampleData(audioTrack, buf, bufInfo)
+                audioEx.advance()
             }
         }
 
