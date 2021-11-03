@@ -16,6 +16,7 @@ import org.json.JSONArray
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.lang.Exception
 import java.nio.ByteBuffer
 import kotlin.random.Random
 
@@ -45,7 +46,7 @@ class DownloadWorker(
         val mergeFile = File(context.cacheDir, "${timestamp}_merge.mp4")
 
         try {
-            val videoUrl = videoFallbackUrl(jsonUrl) ?: return Result.failure()
+            val videoUrl = videoFallbackUrl(jsonUrl)
             val audioUrl = Uri.parse(videoUrl).let { uri ->
                 val path = uri.path?.replaceAfterLast('/', "DASH_audio.mp4")
                 uri.buildUpon().path(path).build().toString()
@@ -81,24 +82,20 @@ class DownloadWorker(
         }
     }
 
-    private fun videoFallbackUrl(jsonUrl: String): String? {
+    private fun videoFallbackUrl(jsonUrl: String): String {
         val response = Request.Builder().url(jsonUrl).build().let { req ->
             client.newCall(req).execute()
         }
 
-        return if (response.code == 200) {
-            JSONArray(response.body!!.string())
-                .getJSONObject(0)
-                .getJSONObject("data")
-                .getJSONArray("children")
-                .getJSONObject(0)
-                .getJSONObject("data")
-                .getJSONObject("secure_media")
-                .getJSONObject("reddit_video")
-                .getString("fallback_url")
-        } else {
-            null
-        }
+        return JSONArray(response.body!!.string())
+            .getJSONObject(0)
+            .getJSONObject("data")
+            .getJSONArray("children")
+            .getJSONObject(0)
+            .getJSONObject("data")
+            .getJSONObject("secure_media")
+            .getJSONObject("reddit_video")
+            .getString("fallback_url")
     }
 
     private fun downloadAudio(audioUrl: String, audioFile: File): Long {
