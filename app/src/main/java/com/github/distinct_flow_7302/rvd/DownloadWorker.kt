@@ -16,7 +16,6 @@ import org.json.JSONArray
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
-import java.lang.Exception
 import java.nio.ByteBuffer
 import kotlin.random.Random
 
@@ -137,7 +136,7 @@ class DownloadWorker(
         }
     }
 
-    private fun saveToDownloads(input: File, filename: String): Uri {
+    private fun saveToDownloads(file: File, filename: String): Uri {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
             put(MediaStore.MediaColumns.MIME_TYPE, MIME_TYPE)
@@ -153,8 +152,8 @@ class DownloadWorker(
         )!!
 
         context.contentResolver.openOutputStream(uri).use { output ->
-            input.inputStream().use { input ->
-                input.copyTo(output!!)
+            file.inputStream().use { input ->
+                input.copyTo(output!!, file.length())
             }
         }
 
