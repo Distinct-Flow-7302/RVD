@@ -9,20 +9,24 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import android.content.Intent
 
-class NotificationHandler(private val applicationContext: Context) {
+class NotificationHandler(
+    private val context: Context,
+    private val notificationId: Int,
+    private val title: String,
+) {
     companion object {
         private const val NAME = "RVD"
         private const val CHANNEL_ID = "com.github.distinct_flow_7302.rvd"
         private const val IMPORTANCE = NotificationManager.IMPORTANCE_LOW
         private const val DESCRIPTION = "Reddit video downloader"
-        private const val TAG = "NotificationHandler"
     }
 
-    private var notificationId = -1
-    private lateinit var builder: NotificationCompat.Builder
-    private var prevProgress = 0
+    private val builder: NotificationCompat.Builder
+    private val notificationManager = NotificationManagerCompat.from(context)
 
-    private val notificationManager = NotificationManagerCompat.from(applicationContext)
+    private var offset = 0
+    private var width = 0
+    private var prevProgress = 0
 
     init {
         val channel = NotificationChannel(CHANNEL_ID, NAME, IMPORTANCE).apply {
@@ -30,14 +34,11 @@ class NotificationHandler(private val applicationContext: Context) {
         }
 
         val notificationManager =
-            applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         notificationManager.createNotificationChannel(channel)
-    }
 
-    fun initBuilder(startId: Int, title: String) {
-        notificationId = startId
-        builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID).apply {
+        builder = NotificationCompat.Builder(context, CHANNEL_ID).apply {
             setSmallIcon(R.drawable.download_notification_icon)
             setContentTitle(title)
             setContentText("Starting download")
@@ -45,13 +46,23 @@ class NotificationHandler(private val applicationContext: Context) {
             setOngoing(true)
             priority = NotificationCompat.PRIORITY_LOW
         }
-        prevProgress = 0
         showNotification()
     }
 
-    fun showProgressPercentage(currentProgress: Int) {
-        val progress = currentProgress.coerceAtMost(100)
-        if (progress - prevProgress < 10) return
+    fun newSegment(offset: Int, width: Int) {
+        this.offset = offset.coerceAtMost(100)
+        this.width = width.coerceAtMost(100 - this.offset)
+        builder
+            .setContentText("${this.offset} %")
+            .setProgress(100, this.offset, false)
+        showNotification()
+        prevProgress = this.offset
+    }
+
+    fun setProgressPercentage(length: Long, maxLength: Long) {
+        val segProgress = (length.coerceAtMost(maxLength).toDouble() * width / maxLength).toInt()
+        val progress = (offset + segProgress).coerceAtMost(100)
+        if (progress - prevProgress < 8) return
         builder
             .setContentText("$progress %")
             .setProgress(100, progress, false)
@@ -61,7 +72,7 @@ class NotificationHandler(private val applicationContext: Context) {
 
     fun showFinished(fileUri: Uri, mime: String) {
         val shareIntent = PendingIntent.getActivity(
-            applicationContext,
+            context,
             0,
             Intent.createChooser(
                 Intent().apply {
@@ -75,7 +86,7 @@ class NotificationHandler(private val applicationContext: Context) {
         )
 
         val openIntent = PendingIntent.getActivity(
-            applicationContext,
+            context,
             0,
             Intent().apply {
                 action = Intent.ACTION_VIEW
