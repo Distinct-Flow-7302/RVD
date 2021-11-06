@@ -57,9 +57,9 @@ class DownloadWorker(
                 return doWorkImage(sourceUrl)
             }
 
-            return Result.failure()
+            return downloadFailed()
         } catch (e: Throwable) {
-            return Result.failure()
+            return downloadFailed()
         }
     }
 
@@ -81,13 +81,18 @@ class DownloadWorker(
 
     private fun imageUrlFromJson(json: JSONArray): String? {
         return try {
-            json
+            val data = json
                 .getJSONObject(0)
                 .getJSONObject("data")
                 .getJSONArray("children")
                 .getJSONObject(0)
                 .getJSONObject("data")
-                .getString("url_overridden_by_dest")
+
+            if (!data.getBoolean("is_reddit_media_domain")) {
+                return null
+            }
+
+            return data.getString("url_overridden_by_dest")
         } catch (e: JSONException) {
             null
         }
