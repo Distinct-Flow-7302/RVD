@@ -70,7 +70,7 @@ class NotificationHandler(
         prevProgress = progress
     }
 
-    fun showFinished(fileUri: Uri, mime: String) {
+    fun showFinished(fileUri: Uri, mime: String?) {
         val shareIntent = PendingIntent.getActivity(
             context,
             0,
@@ -80,7 +80,7 @@ class NotificationHandler(
                     putExtra(Intent.EXTRA_STREAM, fileUri)
                     type = mime
                 },
-                "Share video"
+                "Share media"
             ),
             PendingIntent.FLAG_IMMUTABLE
         )

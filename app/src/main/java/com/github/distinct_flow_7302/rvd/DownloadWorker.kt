@@ -13,11 +13,13 @@ import androidx.work.WorkerParameters
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONException
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import kotlin.random.Random
+import android.webkit.MimeTypeMap
 
 class DownloadWorker(
     private val context: Context,
@@ -28,8 +30,6 @@ class DownloadWorker(
         const val TIMESTAMP = "timestamp"
         const val TITLE = "title"
         const val JSON_URL = "json-url"
-
-        private const val MIME_TYPE = "video/mp4"
     }
 
     private val timestamp = params.inputData.getInt(TIMESTAMP, Random.Default.nextInt())
@@ -40,12 +40,87 @@ class DownloadWorker(
     private val notificationHandler = NotificationHandler(context, timestamp, title)
 
     override fun doWork(): Result {
-        val videoFile = File(context.cacheDir, "${timestamp}_video.mp4")
-        val audioFile = File(context.cacheDir, "${timestamp}_audio.mp4")
-        val mergeFile = File(context.cacheDir, "${timestamp}_merge.mp4")
+        try {
+            val response = Request.Builder().url(jsonUrl).build().let { req ->
+                client.newCall(req).execute()
+            }
+
+            val json = JSONArray(response.body!!.string())
+
+            var sourceUrl = videoUrlFromJson(json)
+            if (sourceUrl != null) {
+                return doWorkVideo(sourceUrl)
+            }
+
+            sourceUrl = imageUrlFromJson(json)
+            if (sourceUrl != null) {
+                return doWorkImage(sourceUrl)
+            }
+
+            return Result.failure()
+        } catch (e: Throwable) {
+            return Result.failure()
+        }
+    }
+
+    private fun videoUrlFromJson(json: JSONArray): String? {
+        return try {
+            json
+                .getJSONObject(0)
+                .getJSONObject("data")
+                .getJSONArray("children")
+                .getJSONObject(0)
+                .getJSONObject("data")
+                .getJSONObject("secure_media")
+                .getJSONObject("reddit_video")
+                .getString("fallback_url")
+        } catch (e: JSONException) {
+            null
+        }
+    }
+
+    private fun imageUrlFromJson(json: JSONArray): String? {
+        return try {
+            json
+                .getJSONObject(0)
+                .getJSONObject("data")
+                .getJSONArray("children")
+                .getJSONObject(0)
+                .getJSONObject("data")
+                .getString("url_overridden_by_dest")
+        } catch (e: JSONException) {
+            null
+        }
+    }
+
+    private fun doWorkImage(imageUrl: String): Result {
+        val imageFile = File(context.cacheDir, "$timestamp")
+        try {
+            notificationHandler.newSegment(0, 80)
+            Request.Builder().url(imageUrl).build().let { req ->
+                val response = client.newCall(req).execute()
+                response.body!!.byteStream().use { input->
+                    imageFile.outputStream().use { output ->
+                        input.copyTo(output, response.body!!.contentLength())
+                    }
+                }
+            }
+
+            notificationHandler.newSegment(80, 20)
+            return saveToDownloads(imageFile, MimeTypeMap.getFileExtensionFromUrl(imageUrl))
+        } catch (e: Throwable) {
+            return downloadFailed()
+        } finally {
+            imageFile.delete()
+        }
+    }
+
+    private fun doWorkVideo(videoUrl: String): Result {
+        val videoFile = File(context.cacheDir, "${timestamp}_video")
+        val audioFile = File(context.cacheDir, "${timestamp}_audio")
+        val mergeFile = File(context.cacheDir, "${timestamp}_merge")
 
         try {
-            val videoUrl = videoFallbackUrl(jsonUrl)
             val audioUrl = Uri.parse(videoUrl).let { uri ->
                 val path = uri.path?.replaceAfterLast('/', "DASH_audio.mp4")
                 uri.buildUpon().path(path).build().toString()
@@ -67,34 +142,14 @@ class DownloadWorker(
             }
 
             notificationHandler.newSegment(90, 10)
-            val fileUri = saveToDownloads(input, "$title.mp4")
-
-            notificationHandler.showFinished(fileUri, MIME_TYPE)
-            return Result.success()
+            return saveToDownloads(input, MimeTypeMap.getFileExtensionFromUrl(videoUrl))
         } catch (e: Throwable) {
-            notificationHandler.showFailed()
-            return Result.failure()
+            return downloadFailed()
         } finally {
             videoFile.delete()
             audioFile.delete()
             mergeFile.delete()
         }
-    }
-
-    private fun videoFallbackUrl(jsonUrl: String): String {
-        val response = Request.Builder().url(jsonUrl).build().let { req ->
-            client.newCall(req).execute()
-        }
-
-        return JSONArray(response.body!!.string())
-            .getJSONObject(0)
-            .getJSONObject("data")
-            .getJSONArray("children")
-            .getJSONObject(0)
-            .getJSONObject("data")
-            .getJSONObject("secure_media")
-            .getJSONObject("reddit_video")
-            .getString("fallback_url")
     }
 
     private fun downloadAudio(audioUrl: String, audioFile: File): Long {
@@ -136,10 +191,12 @@ class DownloadWorker(
         }
     }
 
-    private fun saveToDownloads(file: File, filename: String): Uri {
+    private fun saveToDownloads(file: File, ext: String): Result {
+        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-            put(MediaStore.MediaColumns.MIME_TYPE, MIME_TYPE)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$title.$ext")
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
                 Environment.DIRECTORY_DOWNLOADS
@@ -157,7 +214,8 @@ class DownloadWorker(
             }
         }
 
-        return uri
+        notificationHandler.showFinished(uri, mime)
+        return Result.success()
     }
 
     private fun mux(video: File, audio: File, output: File, estimatedLen: Long) {
@@ -219,5 +277,10 @@ class DownloadWorker(
 
         muxer.stop()
         muxer.release()
+    }
+
+    private fun downloadFailed(): Result {
+        notificationHandler.showFailed()
+        return Result.failure()
     }
 }
