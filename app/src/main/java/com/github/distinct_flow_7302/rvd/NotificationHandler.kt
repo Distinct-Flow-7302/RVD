@@ -73,7 +73,7 @@ class NotificationHandler(
     fun showFinished(fileUri: Uri, mime: String?) {
         val shareIntent = PendingIntent.getActivity(
             context,
-            0,
+            notificationId,
             Intent.createChooser(
                 Intent().apply {
                     action = Intent.ACTION_SEND
@@ -87,7 +87,7 @@ class NotificationHandler(
 
         val openIntent = PendingIntent.getActivity(
             context,
-            0,
+            notificationId,
             Intent().apply {
                 action = Intent.ACTION_VIEW
                 putExtra(Intent.EXTRA_STREAM, fileUri)
